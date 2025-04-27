@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class StepCountPage extends StatefulWidget {
   const StepCountPage({super.key});
@@ -17,7 +18,15 @@ class _StepCountPageState extends State<StepCountPage> {
   @override
   void initState() {
     super.initState();
+    _requestPermissions();
     _startStepCounting();
+  }
+
+  Future<void> _requestPermissions() async {
+    var status = await Permission.activityRecognition.status;
+    if (!status.isGranted) {
+      await Permission.activityRecognition.request();
+    }
   }
 
   void _startStepCounting() {

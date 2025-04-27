@@ -4,6 +4,7 @@
     <!-- Add permissions here -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" /> <!-- Permission for step counter -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
     
     <!-- Permission for devices running Android 10 (API 29) and above -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:required="false"/>

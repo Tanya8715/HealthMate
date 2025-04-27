@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.healthmate"
-        minSdk = 21
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -43,4 +43,7 @@ flutter {
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("com.google.android.gms:play-services-fitness:21.1.0")
+
+
 }

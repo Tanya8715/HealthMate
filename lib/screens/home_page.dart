@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dashboard_screen.dart'; // Make sure this file defines a class named DashboardScreen
+import 'dashboard_screen.dart';
 import 'login_screen.dart' as login;
 import 'widgets/footer_widget.dart';
+import 'package:health/health.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,11 +18,44 @@ class _HomePageState extends State<HomePage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String userName = 'User';
   bool _loading = true;
+  int _stepCount = 0;
+  final Health _health = Health();
 
   @override
   void initState() {
     super.initState();
     _loadUserName();
+    _fetchSteps();
+  }
+
+  Future<void> _fetchSteps() async {
+    final types = [HealthDataType.STEPS];
+
+    bool requested = await _health.requestAuthorization(types);
+
+    if (requested) {
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(days: 1));
+
+      final steps = await _health.getHealthDataFromTypes(
+        startTime: yesterday,
+        endTime: now,
+        types: types,
+      );
+
+      int totalSteps = 0;
+      for (var datapoint in steps) {
+        if (datapoint.type == HealthDataType.STEPS) {
+          totalSteps += (datapoint.value as int);
+        }
+      }
+
+      setState(() {
+        _stepCount = totalSteps;
+      });
+    } else {
+      print('Authorization not granted');
+    }
   }
 
   Future<void> _loadUserName() async {
@@ -110,7 +144,7 @@ class _HomePageState extends State<HomePage> {
                               children: [
                                 _buildStatCard(
                                   "Steps",
-                                  "2,345",
+                                  '$_stepCount', // 🛠️ Updated to dynamic steps
                                   Icons.directions_walk,
                                   Colors.green,
                                 ),

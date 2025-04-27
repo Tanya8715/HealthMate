@@ -26,6 +26,8 @@ dependencies:
   url_launcher: ^6.2.3
   font_awesome_flutter: ^10.6.0
   http: ^0.13.6
+  health: ^12.1.0
+  permission_handler: ^12.0.0+1
 
 dev_dependencies:
   flutter_test:
