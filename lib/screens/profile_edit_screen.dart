@@ -1,6 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -15,11 +15,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   final _formKey = GlobalKey<FormState>();
 
-  String? _name, _bio, _gender, _age, _medicalConditions;
-  String _avatarUrl =
-      'https://img.freepik.com/premium-vector/cute-woman-avatar-profile-vector-illustration_1058532-14592.jpg';
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _heightController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _avatarUrlController =
+      TextEditingController(); // 👈 NEW
 
+  String? _selectedGender;
   bool _isLoading = true;
+
+  final List<String> genderOptions = ['Male', 'Female', 'Others'];
 
   @override
   void initState() {
@@ -29,19 +34,18 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _fetchUserData() async {
     try {
-      final User? user = _auth.currentUser;
+      final user = _auth.currentUser;
       if (user != null) {
-        final userDoc =
-            await _firestore.collection('users').doc(user.uid).get();
-        if (userDoc.exists) {
-          final data = userDoc.data();
+        final doc = await _firestore.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          final data = doc.data()!;
           setState(() {
-            _name = data?['name'] ?? '';
-            _bio = data?['bio'] ?? '';
-            _gender = data?['gender'] ?? '';
-            _age = data?['age'] ?? '';
-            _medicalConditions = data?['medicalConditions'] ?? '';
-            _avatarUrl = data?['avatarUrl'] ?? _avatarUrl;
+            _nameController.text = data['name'] ?? '';
+            _selectedGender =
+                genderOptions.contains(data['gender']) ? data['gender'] : null;
+            _heightController.text = (data['height'] ?? '').toString();
+            _weightController.text = (data['weight'] ?? '').toString();
+            _avatarUrlController.text = data['avatarUrl'] ?? '';
             _isLoading = false;
           });
         }
@@ -58,19 +62,41 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     final user = _auth.currentUser;
     if (user != null && _formKey.currentState!.validate()) {
       try {
+        final int height = int.tryParse(_heightController.text.trim()) ?? 0;
+        final int weight = int.tryParse(_weightController.text.trim()) ?? 0;
+
         await _firestore.collection('users').doc(user.uid).update({
-          'name': _name ?? '',
-          'bio': _bio ?? '',
-          'gender': _gender ?? '',
-          'age': _age ?? '',
-          'medicalConditions': _medicalConditions ?? '',
-          'avatarUrl': _avatarUrl,
+          'name': _nameController.text.trim(),
+          'gender': _selectedGender ?? '',
+          'height': height,
+          'weight': weight,
+          'avatarUrl': _avatarUrlController.text.trim(), // 👈 from text field
         });
-        Navigator.pop(context);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile Updated Successfully!')),
+        );
+
+        Navigator.pop(context, true); // Refresh Dashboard
       } catch (e) {
         print('Error updating profile: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update profile')),
+        );
       }
     }
+  }
+
+  Widget _buildAvatar(double radius) {
+    final String avatarUrl = _avatarUrlController.text.trim();
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.grey.shade300,
+      backgroundImage:
+          avatarUrl.isNotEmpty
+              ? NetworkImage(avatarUrl)
+              : const AssetImage('assets/images/avatar.png') as ImageProvider,
+    );
   }
 
   @override
@@ -81,70 +107,92 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Profile'),
         backgroundColor: Colors.green[600],
+        title: const Text('Edit Profile'),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(
               children: [
-                CircleAvatar(
-                  radius: 60,
-                  backgroundImage: NetworkImage(_avatarUrl),
-                ),
+                _buildAvatar(60),
                 const SizedBox(height: 20),
                 TextFormField(
-                  initialValue: _name,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (value) => _name = value,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your name';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  initialValue: _bio,
-                  decoration: const InputDecoration(labelText: 'Bio'),
-                  onChanged: (value) => _bio = value,
-                ),
-                TextFormField(
-                  initialValue: _gender,
-                  decoration: const InputDecoration(labelText: 'Gender'),
-                  onChanged: (value) => _gender = value,
-                ),
-                TextFormField(
-                  initialValue: _age,
-                  decoration: const InputDecoration(labelText: 'Age'),
-                  onChanged: (value) => _age = value,
-                  keyboardType: TextInputType.number,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your age';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  initialValue: _medicalConditions,
+                  controller: _avatarUrlController,
                   decoration: const InputDecoration(
-                    labelText: 'Medical Conditions',
+                    labelText: 'Avatar Image URL',
                   ),
-                  onChanged: (value) => _medicalConditions = value,
+                  validator:
+                      (value) =>
+                          value == null || value.isEmpty
+                              ? 'Enter image URL'
+                              : null,
+                  onChanged: (_) => setState(() {}), // 👈 Update avatar live
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                  validator:
+                      (value) =>
+                          value == null || value.isEmpty
+                              ? 'Enter your name'
+                              : null,
+                ),
+                const SizedBox(height: 20),
+                DropdownButtonFormField<String>(
+                  value: _selectedGender,
+                  decoration: const InputDecoration(labelText: 'Gender'),
+                  items:
+                      genderOptions.map((gender) {
+                        return DropdownMenuItem(
+                          value: gender,
+                          child: Text(gender),
+                        );
+                      }).toList(),
+                  onChanged: (value) => setState(() => _selectedGender = value),
+                  validator: (value) => value == null ? 'Select gender' : null,
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _heightController,
+                  decoration: const InputDecoration(labelText: 'Height (cm)'),
+                  keyboardType: TextInputType.number,
+                  validator:
+                      (value) =>
+                          value == null || value.isEmpty
+                              ? 'Enter height'
+                              : null,
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _weightController,
+                  decoration: const InputDecoration(labelText: 'Weight (kg)'),
+                  keyboardType: TextInputType.number,
+                  validator:
+                      (value) =>
+                          value == null || value.isEmpty
+                              ? 'Enter weight'
+                              : null,
+                ),
+                const SizedBox(height: 30),
+                ElevatedButton.icon(
                   onPressed: _updateProfile,
-                  style: ButtonStyle(
-                    backgroundColor: WidgetStateProperty.all(
-                      Colors.green[600],
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save Changes'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  child: const Text('Update Profile'),
                 ),
               ],
             ),

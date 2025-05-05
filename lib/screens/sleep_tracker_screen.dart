@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 
 class SleepTrackerScreen extends StatefulWidget {
   const SleepTrackerScreen({super.key});
@@ -14,6 +15,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
   TimeOfDay? sleepTime;
   TimeOfDay? wakeTime;
   double sleepHours = 0;
+  Timer? reminderTimer;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -58,7 +60,105 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       await _firestore.collection('users').doc(user.uid).update({
         'sleepHours': sleepHours,
       });
+
+      if (sleepHours < 4 || sleepHours > 12) {
+        await _saveAbnormalSleepNotification();
+        _showSleepResultDialog(isAbnormal: true);
+      } else {
+        _showSleepResultDialog(isAbnormal: false);
+      }
     }
+  }
+
+  Future<void> _saveAbnormalSleepNotification() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .add({
+            'message':
+                '😴 Abnormal sleep detected: ${sleepHours.toStringAsFixed(1)} hrs',
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+    }
+  }
+
+  void _showSleepResultDialog({required bool isAbnormal}) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(isAbnormal ? '⚠️ Sleep Warning' : '✅ Sleep Success'),
+            content: Text(
+              isAbnormal
+                  ? 'You had ${sleepHours.toStringAsFixed(1)} hrs of sleep, which is outside the healthy range.'
+                  : 'Great! You slept ${sleepHours.toStringAsFixed(1)} hrs. Keep it up!',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> startSleepReminderTimer() async {
+    reminderTimer?.cancel();
+
+    if (sleepTime == null) return;
+
+    final now = DateTime.now();
+    DateTime sleepDateTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      sleepTime!.hour,
+      sleepTime!.minute,
+    );
+
+    if (sleepDateTime.isBefore(now)) {
+      sleepDateTime = sleepDateTime.add(const Duration(days: 1));
+    }
+
+    final reminderTime = sleepDateTime.subtract(const Duration(minutes: 1));
+    final diff = reminderTime.difference(now);
+
+    if (diff.isNegative) {
+      debugPrint(
+        "Sleep reminder too close to current time. Skipping reminder.",
+      );
+      return;
+    }
+
+    debugPrint("Sleep reminder will trigger in: $diff");
+
+    reminderTimer = Timer(diff, () async {
+      if (mounted) await showSleepReminderPopup();
+    });
+  }
+
+  Future<void> showSleepReminderPopup() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // ❗️Force user to press OK
+      builder:
+          (context) => AlertDialog(
+            title: const Text('⏰ Sleep Reminder'),
+            content: const Text(
+              "It's almost time to sleep. Get ready to relax!",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
   }
 
   Future<void> pickTime({required bool isSleepTime}) async {
@@ -85,12 +185,20 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       setState(() {
         if (isSleepTime) {
           sleepTime = picked;
+          startSleepReminderTimer(); // ⏰ Start the reminder timer here
         } else {
           wakeTime = picked;
         }
       });
+
       await calculateAndSaveSleep();
     }
+  }
+
+  @override
+  void dispose() {
+    reminderTimer?.cancel();
+    super.dispose();
   }
 
   @override

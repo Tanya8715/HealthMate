@@ -2,15 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'models/notification.dart';
+import '../models/app_notification.dart';
 
-class NotificationScreen extends StatelessWidget {
+class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  State<NotificationScreen> createState() => _NotificationScreenState();
+}
 
+class _NotificationScreenState extends State<NotificationScreen> {
+  final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _markAllAsRead();
+  }
+
+  Future<void> _markAllAsRead() async {
+    final snapshot =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('notifications')
+            .where('read', isEqualTo: false)
+            .get();
+
+    for (var doc in snapshot.docs) {
+      await doc.reference.update({'read': true});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green[600],
@@ -54,14 +79,18 @@ class NotificationScreen extends StatelessWidget {
             separatorBuilder: (_, __) => const Divider(),
             itemBuilder: (context, index) {
               final notification = notifications[index];
+              final isUnread = !notification.read;
+
               return ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.notifications_active,
-                  color: Colors.green,
+                  color: isUnread ? Colors.green : Colors.green,
                 ),
                 title: Text(
                   notification.title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
                 subtitle: Text(notification.message),
                 trailing: Text(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/doctor.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../models/doctor.dart';
 
 class BookAppointmentScreen extends StatefulWidget {
   final Doctor doctor;
@@ -60,6 +62,48 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     return snapshot.docs.isNotEmpty;
   }
 
+  Future<void> sendEmail({
+    required String toEmail,
+    required String userName,
+    required String doctorName,
+    required String specialization,
+    required String date,
+    required String time,
+  }) async {
+    const serviceId = 'service_t16wq0e';
+    const templateId = 'template_285ozfg';
+    const userId = 'pRIA_V-9pPb18XZLp';
+
+    final url = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
+
+    final response = await http.post(
+      url,
+      headers: {
+        'origin': 'http://localhost',
+        'Content-Type': 'application/json',
+      },
+      body: json.encode({
+        'service_id': serviceId,
+        'template_id': templateId,
+        'user_id': userId,
+        'template_params': {
+          'to_email': toEmail,
+          'to_name': userName,
+          'doctor_name': doctorName,
+          'specialization': specialization,
+          'date': date,
+          'time': time,
+        },
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print('✅ Email sent successfully');
+    } else {
+      print('❌ Email sending failed: ${response.body}');
+    }
+  }
+
   Future<void> _bookAppointment() async {
     if (selectedDate == null || selectedTime == null) return;
     setState(() => isLoading = true);
@@ -77,6 +121,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       final userName =
           userDoc.exists ? (userDoc.data()?['name'] ?? 'Unknown') : 'Unknown';
+      final userEmail = user.email ?? 'unknown@example.com';
 
       final appointmentDateTime = DateTime(
         selectedDate!.year,
@@ -87,7 +132,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       );
 
       final alreadyBooked = await _checkIfSlotBooked(appointmentDateTime);
-
       if (alreadyBooked) {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -103,9 +147,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       await _firestore.collection('appointments').add({
         'doctorId': widget.doctor.id,
         'doctorName': widget.doctor.name,
-        'doctorSpecialization': widget.doctor.specialization,
+        'specialization': widget.doctor.specialization,
         'userId': user.uid,
         'userName': userName,
+        'userEmail': userEmail,
         'appointmentDate':
             "${appointmentDateTime.year}-${appointmentDateTime.month.toString().padLeft(2, '0')}-${appointmentDateTime.day.toString().padLeft(2, '0')}",
         'appointmentTime':
@@ -113,11 +158,21 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         'createdAt': DateTime.now().toIso8601String(),
       });
 
+      await sendEmail(
+        toEmail: userEmail,
+        userName: userName,
+        doctorName: widget.doctor.name,
+        specialization: widget.doctor.specialization,
+        date:
+            "${appointmentDateTime.day}/${appointmentDateTime.month}/${appointmentDateTime.year}",
+        time:
+            "${appointmentDateTime.hour.toString().padLeft(2, '0')}:${appointmentDateTime.minute.toString().padLeft(2, '0')}",
+      );
+
       setState(() => isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✅ Appointment booked successfully!')),
       );
-
       Navigator.pop(context);
     } catch (e) {
       setState(() => isLoading = false);

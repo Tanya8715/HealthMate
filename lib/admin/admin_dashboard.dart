@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:healthmate/screens/login_screen.dart';
+import 'package:intl/intl.dart'; // ADD THIS for time formatting
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -20,6 +21,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final _contactController = TextEditingController();
   final _imageUrlController = TextEditingController();
   String? _selectedSpecialization;
+
+  final _editPatientController = TextEditingController();
+  final _editTimeController = TextEditingController();
+  final _editDoctorController = TextEditingController();
+  final _editSpecializationController = TextEditingController();
 
   final List<String> specializations = [
     'Cardiologist (Heart Specialist)',
@@ -147,6 +153,55 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  void _showEditAppointmentDialog(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    _editDoctorController.text = data['doctorName'] ?? '';
+    _editSpecializationController.text = data['doctorSpecialization'] ?? '';
+    _editPatientController.text = data['userName'] ?? '';
+    _editTimeController.text = data['appointmentTime'] ?? '';
+
+    showDialog(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Edit Appointment'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildInput(_editDoctorController, 'Doctor Name'),
+                  _buildInput(
+                    _editSpecializationController,
+                    'doctorSpecialization',
+                  ),
+                  _buildInput(_editPatientController, 'Patient Name'),
+                  _buildInput(_editTimeController, 'Appointment Time'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  await doc.reference.update({
+                    'doctorName': _editDoctorController.text.trim(),
+                    'doctorSpecialization':
+                        _editSpecializationController.text.trim(),
+                    'userName': _editPatientController.text.trim(),
+                    'appointmentTime': _editTimeController.text.trim(),
+                  });
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Save Changes'),
+              ),
+            ],
+          ),
+    );
+  }
+
   Widget _buildInput(
     TextEditingController controller,
     String label, {
@@ -161,8 +216,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
           labelText: label,
           border: const OutlineInputBorder(),
         ),
-        validator:
-            (value) => value == null || value.isEmpty ? 'Enter $label' : null,
       ),
     );
   }
@@ -197,7 +250,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.only(right: 12.0, top: 10),
+          padding: const EdgeInsets.only(right: 12, top: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -247,7 +300,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         backgroundImage: NetworkImage(data['imageUrl'] ?? ''),
                       ),
                       title: Text(data['name'] ?? 'Unnamed'),
-                      subtitle: Text(data['specialization'] ?? ''),
+                      subtitle: Text(data['doctorSpecialization'] ?? ''),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -284,17 +337,43 @@ class _AdminDashboardState extends State<AdminDashboard> {
           itemCount: appointments.length,
           itemBuilder: (_, i) {
             final data = appointments[i].data() as Map<String, dynamic>;
+
+            // FORMAT time into AM/PM properly
+            String formattedTime = data['appointmentTime'] ?? '';
+            try {
+              final inputFormat = DateFormat('HH:mm');
+              final outputFormat = DateFormat('hh:mm a');
+              final dateTime = inputFormat.parse(formattedTime);
+              formattedTime = outputFormat.format(dateTime);
+            } catch (e) {
+              // If parsing fails, keep original
+            }
+
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
               child: ListTile(
                 leading: const Icon(Icons.calendar_month),
-                title: Text('Doctor: ${data['doctorName']}'),
-                subtitle: Text(
-                  'Patient: ${data['userName']}\nDate: ${data['appointmentTime']}',
+                title: Text(
+                  'Doctor: ${data['doctorName']} (${data['doctorSpecialization'] ?? 'No Specialization'})',
+
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => appointments[i].reference.delete(),
+                subtitle: Text(
+                  'Patient: ${data['userName']}\nDate: $formattedTime',
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blue),
+                      onPressed:
+                          () => _showEditAppointmentDialog(appointments[i]),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => appointments[i].reference.delete(),
+                    ),
+                  ],
                 ),
               ),
             );

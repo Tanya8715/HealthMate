@@ -16,57 +16,41 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final Health _health = Health();
+
   String userName = 'User';
   bool _loading = true;
   int _stepCount = 0;
-  final Health _health = Health();
+  double _waterIntake = 0.0;
+  double _weight = 70.0;
+
+  int get _caloriesBurned {
+    // Approximate calories = 0.04 × steps × weight / 60
+    return (_stepCount * 0.04 * _weight / 60).round();
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadUserName();
-    _fetchSteps();
+    _loadUserStats();
   }
 
-  Future<void> _fetchSteps() async {
-    final types = [HealthDataType.STEPS];
-
-    bool requested = await _health.requestAuthorization(types);
-
-    if (requested) {
-      final now = DateTime.now();
-      final yesterday = now.subtract(const Duration(days: 1));
-
-      final steps = await _health.getHealthDataFromTypes(
-        startTime: yesterday,
-        endTime: now,
-        types: types,
-      );
-
-      int totalSteps = 0;
-      for (var datapoint in steps) {
-        if (datapoint.type == HealthDataType.STEPS) {
-          totalSteps += (datapoint.value as int);
-        }
-      }
-
-      setState(() {
-        _stepCount = totalSteps;
-      });
-    } else {
-      print('Authorization not granted');
-    }
-  }
-
-  Future<void> _loadUserName() async {
+  Future<void> _loadUserStats() async {
     final user = _auth.currentUser;
     if (user != null) {
       final doc = await _firestore.collection('users').doc(user.uid).get();
       final data = doc.data();
-      setState(() {
-        userName = data?['name'] ?? 'User';
-        _loading = false;
-      });
+      if (data != null) {
+        setState(() {
+          userName = data['name'] ?? 'User';
+          _stepCount = data['steps'] ?? 0;
+          _waterIntake = (data['waterIntake'] ?? 0).toDouble();
+          _weight = (data['weight'] ?? 70).toDouble();
+          _loading = false;
+        });
+      } else {
+        setState(() => _loading = false);
+      }
     } else {
       setState(() => _loading = false);
     }
@@ -144,21 +128,21 @@ class _HomePageState extends State<HomePage> {
                               children: [
                                 _buildStatCard(
                                   "Steps",
-                                  '$_stepCount', // 🛠️ Updated to dynamic steps
+                                  '$_stepCount',
                                   Icons.directions_walk,
                                   Colors.green,
                                 ),
                                 const SizedBox(width: 10),
                                 _buildStatCard(
                                   "Calories",
-                                  "580",
+                                  '$_caloriesBurned',
                                   Icons.local_fire_department,
                                   Colors.redAccent,
                                 ),
                                 const SizedBox(width: 10),
                                 _buildStatCard(
                                   "Water",
-                                  "2.0L",
+                                  '${(_waterIntake / 1000).toStringAsFixed(1)}L',
                                   Icons.water_drop,
                                   Colors.blueAccent,
                                 ),
@@ -228,9 +212,7 @@ class _HomePageState extends State<HomePage> {
                                     MaterialPageRoute(
                                       builder:
                                           (_) => DashboardScreen(
-                                            onToggleTheme: () {
-                                              // Add your theme toggle logic here
-                                            },
+                                            onToggleTheme: () {},
                                           ),
                                     ),
                                   );
