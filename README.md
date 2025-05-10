@@ -33,10 +33,6 @@
 - GDPR & HIPAA-aligned data practices
 - Regular backups and recovery protocols
 
-## 📸 Screenshots
-
-*(Add your app screenshots here to show UI and functionality)*
-
 ## 🧠 Architecture
 
 - Modular UI design (Reusable components)
