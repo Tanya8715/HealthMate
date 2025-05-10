@@ -2,7 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:healthmate/screens/login_screen.dart';
-import 'package:intl/intl.dart'; // ADD THIS for time formatting
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -14,6 +15,10 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   String selectedSection = 'Users';
   bool doctorSortDescending = false;
+  int totalUsers = 0;
+  int totalDoctors = 0;
+  int totalAppointments = 0;
+
   final _formKey = GlobalKey<FormState>();
 
   final _docNameController = TextEditingController();
@@ -41,11 +46,62 @@ class _AdminDashboardState extends State<AdminDashboard> {
     'Gastroenterologist (Stomach Specialist)',
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchCounts();
+  }
+
+  Future<void> _fetchCounts() async {
+    final userSnap = await FirebaseFirestore.instance.collection('users').get();
+    final doctorSnap =
+        await FirebaseFirestore.instance.collection('doctors').get();
+    final appointSnap =
+        await FirebaseFirestore.instance.collection('appointments').get();
+    setState(() {
+      totalUsers = userSnap.docs.length;
+      totalDoctors = doctorSnap.docs.length;
+      totalAppointments = appointSnap.docs.length;
+    });
+  }
+
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
+  Widget _buildSummaryBox(
+    String label,
+    int count,
+    IconData icon,
+    String sectionKey,
+  ) {
+    return InkWell(
+      onTap: () {
+        setState(() {
+          selectedSection = sectionKey;
+        });
+      },
+      child: Column(
+        children: [
+          CircleAvatar(
+            backgroundColor: Colors.teal.shade100,
+            child: Icon(icon, color: Colors.teal.shade800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14, color: Colors.black54),
+          ),
+        ],
+      ),
     );
   }
 
@@ -422,14 +478,154 @@ class _AdminDashboardState extends State<AdminDashboard> {
         child: Padding(
           key: ValueKey<String>(selectedSection),
           padding: const EdgeInsets.all(12),
-          child:
-              selectedSection == 'Users'
-                  ? _buildUsersList()
-                  : selectedSection == 'Doctors'
-                  ? _buildDoctorList()
-                  : _buildAppointmentsList(),
+          child: Column(
+            children: [
+              // Section Title
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    selectedSection,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Section Content
+              Expanded(
+                child:
+                    selectedSection == 'Users'
+                        ? _buildUsersList()
+                        : selectedSection == 'Doctors'
+                        ? _buildDoctorList()
+                        : _buildAppointmentsList(),
+              ),
+
+              // Soft Gap Before Footer
+              const SizedBox(height: 20),
+
+              // Footer Section
+              Container(
+                width: double.infinity,
+                color: primaryColor,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 25,
+                  horizontal: 12,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // App Logo
+                    SizedBox(
+                      height: 50,
+                      width: 50,
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // App Name
+                    const Text(
+                      'Healthmate',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Tagline
+                    const Text(
+                      'Empowering Digital Healthcare',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Support Email
+                    const Text(
+                      'Support: support@healthmate.com',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Social Media Links
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.facebook),
+                          color: Colors.white,
+                          onPressed: () async {
+                            final url = Uri.parse(
+                              'https://facebook.com/yourpage',
+                            );
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url);
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.alternate_email),
+                          color: Colors.white,
+                          onPressed: () async {
+                            final url = Uri.parse(
+                              'https://twitter.com/yourprofile',
+                            );
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url);
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.camera_alt),
+                          color: Colors.white,
+                          onPressed: () async {
+                            final url = Uri.parse(
+                              'https://instagram.com/yourhandle',
+                            );
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Copyright
+                    Text(
+                      '©️ ${DateTime.now().year} Healthmate. All rights reserved.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white60,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+
       floatingActionButton:
           selectedSection == 'Doctors'
               ? FloatingActionButton(

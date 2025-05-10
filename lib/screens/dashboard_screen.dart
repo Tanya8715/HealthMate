@@ -16,7 +16,7 @@ import 'notification_screen.dart';
 import 'faq_screen.dart';
 import 'set_goals_screen.dart';
 import 'progress_tracking_screen.dart';
-import 'about_screen.dart'; // 👈 NEW import added here
+//import 'about_screen.dart'; // 👈 NEW import added here
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
@@ -44,12 +44,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<int> weeklySteps = List.filled(7, 0);
   List<Doctor> doctorList = [];
+  List<int> weeklyWaterIntake = List.filled(7, 0);
+  List<double> weeklySleepHours = List.filled(7, 0.0);
 
   @override
   void initState() {
     super.initState();
     fetchGoals();
     fetchDoctors();
+    syncDailyProgress();
+  }
+
+  Future<void> syncDailyProgress() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+    final firestore = FirebaseFirestore.instance;
+
+    final userDoc = await firestore.collection('users').doc(uid).get();
+    final userData = userDoc.data();
+    if (userData == null) return;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final lastSynced = (userData['lastSynced'] as Timestamp?)?.toDate();
+
+    if (lastSynced != null &&
+        lastSynced.year == today.year &&
+        lastSynced.month == today.month &&
+        lastSynced.day == today.day) {
+      print("Already synced today.");
+      return;
+    }
+
+    // Get current values
+    final steps = (userData['steps'] ?? 0).toInt();
+    final sleep = (userData['sleepHours'] ?? 0.0).toDouble();
+    final water = (userData['waterIntake'] ?? 0).toInt();
+
+    // Save to weekly collections
+    await firestore.collection('weekly_step').doc(uid).set({
+      'days': FieldValue.arrayUnion([steps]),
+    }, SetOptions(merge: true));
+
+    await firestore.collection('weekly_sleep').doc(uid).set({
+      'hours': FieldValue.arrayUnion([sleep]),
+    }, SetOptions(merge: true));
+
+    await firestore.collection('weekly_water').doc(uid).set({
+      'ml': FieldValue.arrayUnion([water]),
+    }, SetOptions(merge: true));
+
+    // Update last sync timestamp
+    await firestore.collection('users').doc(uid).update({
+      'lastSynced': Timestamp.fromDate(now),
+    });
+
+    print("Synced today's progress.");
   }
 
   Future<void> fetchGoals() async {
@@ -125,8 +177,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
           userEmail = data['email'] ?? '';
           userAvatarUrl = data['avatarUrl'] ?? '';
 
-          if (data.containsKey('weeklySteps')) {
-            weeklySteps = List<int>.from(data['weeklySteps']);
+          if (data.containsKey('weeklyWaterIntake') &&
+              data['weeklyWaterIntake'] is List) {
+            List list = data['weeklyWaterIntake'];
+            while (list.length < 7) {
+              list.add(0);
+            }
+            weeklyWaterIntake =
+                list.map((e) => (e is num) ? e.toInt() : 0).toList();
+          } else {
+            weeklyWaterIntake = List.filled(7, 0);
+            _firestore.collection('users').doc(_auth.currentUser!.uid).update({
+              'weeklyWaterIntake': weeklyWaterIntake,
+            });
+          }
+
+          if (data.containsKey('weeklySleepHours') &&
+              data['weeklySleepHours'] is List) {
+            List list = data['weeklySleepHours'];
+            while (list.length < 7) {
+              list.add(0.0);
+            }
+            weeklySleepHours =
+                list.map((e) => (e is num) ? e.toDouble() : 0.0).toList();
+          } else {
+            weeklySleepHours = List.filled(7, 0.0);
+            _firestore.collection('users').doc(_auth.currentUser!.uid).update({
+              'weeklySleepHours': weeklySleepHours,
+            });
           }
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -153,6 +231,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   AppBar _buildAppBar() {
+    final userId = _auth.currentUser?.uid ?? '';
+
     return AppBar(
       backgroundColor: Colors.green[600],
       elevation: 0,
@@ -167,6 +247,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       actions: [
+        StreamBuilder<QuerySnapshot>(
+          stream:
+              _firestore
+                  .collection('users')
+                  .doc(userId)
+                  .collection('notifications')
+                  .where('read', isEqualTo: false)
+                  .snapshots(),
+          builder: (context, snapshot) {
+            int unreadCount = 0;
+            if (snapshot.hasData) {
+              unreadCount = snapshot.data!.docs.length;
+            }
+
+            return Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationScreen(),
+                      ),
+                    );
+                  },
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: 11,
+                    top: 11,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.brightness_6),
           onPressed: widget.onToggleTheme,
@@ -277,62 +412,129 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildWeeklyStepsChart() {
+    final List<String> days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    final double maxY = [
+      stepGoal.toDouble(),
+      waterGoal.toDouble(),
+      sleepGoal.toDouble(),
+      ...weeklySteps.map((e) => e.toDouble()),
+      waterIntake.toDouble(),
+      sleepHours.toDouble(),
+    ].reduce((a, b) => a > b ? a : b);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Weekly Steps Overview',
+          'Weekly Health Overview',
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         AspectRatio(
-          aspectRatio: 1.7,
+          aspectRatio: 1.8,
           child: BarChart(
             BarChartData(
               alignment: BarChartAlignment.spaceAround,
-              maxY: stepGoal.toDouble(),
+              maxY: maxY + 500,
               barTouchData: BarTouchData(enabled: false),
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: true,
+                horizontalInterval: (maxY / 4).clamp(1, 5000),
+                getDrawingHorizontalLine:
+                    (_) => FlLine(
+                      color: Colors.grey.withOpacity(0.3),
+                      strokeWidth: 1,
+                    ),
+                getDrawingVerticalLine:
+                    (_) => FlLine(
+                      color: Colors.grey.withOpacity(0.3),
+                      strokeWidth: 1,
+                    ),
+              ),
               titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: true),
-                ),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    getTitlesWidget: (value, meta) {
-                      const days = [
-                        'Sun',
-                        'Mon',
-                        'Tue',
-                        'Wed',
-                        'Thu',
-                        'Fri',
-                        'Sat',
-                      ];
-                      return Text(
-                        days[value.toInt()],
-                        style: const TextStyle(fontSize: 12),
+                    getTitlesWidget: (value, _) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          days[value.toInt()],
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       );
                     },
                   ),
                 ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 30,
+                    getTitlesWidget: (value, _) {
+                      return Text(
+                        value.toInt().toString(),
+                        style: const TextStyle(fontSize: 10),
+                      );
+                    },
+                  ),
+                ),
+                topTitles: AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
               ),
               borderData: FlBorderData(show: false),
+              groupsSpace: 16,
               barGroups: List.generate(7, (index) {
                 return BarChartGroupData(
                   x: index,
+                  barsSpace: 4,
                   barRods: [
                     BarChartRodData(
-                      toY: weeklySteps[index].toDouble(),
+                      toY:
+                          (index < weeklySteps.length)
+                              ? weeklySteps[index].toDouble()
+                              : 0.0,
+                      width: 6,
                       color: Colors.green,
-                      width: 16,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    BarChartRodData(
+                      toY:
+                          (index < weeklyWaterIntake.length)
+                              ? weeklyWaterIntake[index].toDouble()
+                              : 0.0,
+                      width: 6,
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    BarChartRodData(
+                      toY:
+                          (index < weeklySleepHours.length)
+                              ? weeklySleepHours[index]
+                              : 0.0,
+                      width: 6,
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ],
                 );
               }),
             ),
           ),
+        ),
+        const SizedBox(height: 10),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            LegendItem(color: Colors.green, label: 'Steps'),
+            LegendItem(color: Colors.blue, label: 'Water'),
+            LegendItem(color: Colors.orange, label: 'Sleep'),
+          ],
         ),
       ],
     );
@@ -373,7 +575,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 3),
         const Text(
-          '© 2025 HealthMate • All rights reserved.',
+          '©️ 2025 HealthMate • All rights reserved.',
           style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
       ],
@@ -421,55 +623,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               MaterialPageRoute(builder: (_) => const SetGoalsScreen()),
             ),
           ),
-          StreamBuilder<QuerySnapshot>(
-            stream:
-                _firestore
-                    .collection('users')
-                    .doc(userId)
-                    .collection('notifications')
-                    .orderBy('timestamp', descending: true)
-                    .snapshots(),
-            builder: (context, snapshot) {
-              int notificationCount = 0;
-              if (snapshot.hasData) {
-                notificationCount = snapshot.data!.docs.length;
-              }
-              return ListTile(
-                leading: Stack(
-                  children: [
-                    const Icon(Icons.notifications, color: Colors.green),
-                    if (notificationCount > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            notificationCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                title: const Text('Notifications'),
-                onTap:
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const NotificationScreen(),
-                      ),
-                    ),
-              );
-            },
-          ),
+
           _buildDrawerItem(
             Icons.favorite,
             'Health Status',
@@ -511,14 +665,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           const Divider(),
-          _buildDrawerItem(
-            Icons.info_outline,
-            'About',
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AboutScreen()),
-            ),
-          ),
+          // _buildDrawerItem(
+          //   Icons.info_outline,
+          //   'About',
+          //   () => Navigator.push(
+          //     context,
+          //    // MaterialPageRoute(builder: (_) => const AboutScreen()),
+          //   ),
+          // ),
           ListTile(
             leading: const Icon(Icons.exit_to_app, color: Colors.red),
             title: const Text('Logout', style: TextStyle(color: Colors.red)),
@@ -540,6 +694,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
       leading: Icon(icon, color: Colors.green[800]),
       title: Text(title),
       onTap: onTap,
+    );
+  }
+}
+
+class LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const LegendItem({super.key, required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(width: 12, height: 12, color: color),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
     );
   }
 }

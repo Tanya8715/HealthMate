@@ -4,38 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../models/app_notification.dart';
 
-class NotificationScreen extends StatefulWidget {
+class NotificationScreen extends StatelessWidget {
   const NotificationScreen({super.key});
 
   @override
-  State<NotificationScreen> createState() => _NotificationScreenState();
-}
-
-class _NotificationScreenState extends State<NotificationScreen> {
-  final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-
-  @override
-  void initState() {
-    super.initState();
-    _markAllAsRead();
-  }
-
-  Future<void> _markAllAsRead() async {
-    final snapshot =
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .collection('notifications')
-            .where('read', isEqualTo: false)
-            .get();
-
-    for (var doc in snapshot.docs) {
-      await doc.reference.update({'read': true});
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+
+    if (userId == null) {
+      return const Scaffold(body: Center(child: Text("User not logged in.")));
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green[600],
@@ -79,23 +58,42 @@ class _NotificationScreenState extends State<NotificationScreen> {
             separatorBuilder: (_, __) => const Divider(),
             itemBuilder: (context, index) {
               final notification = notifications[index];
-              final isUnread = !notification.read;
 
-              return ListTile(
-                leading: Icon(
-                  Icons.notifications_active,
-                  color: isUnread ? Colors.green : Colors.green,
+              return Container(
+                decoration: BoxDecoration(
+                  color:
+                      notification.read ? null : Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                title: Text(
-                  notification.title,
-                  style: TextStyle(
-                    fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.notifications_active,
+                    color: Colors.green,
                   ),
-                ),
-                subtitle: Text(notification.message),
-                trailing: Text(
-                  DateFormat('MMM d, h:mm a').format(notification.timestamp),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  title: Text(
+                    notification.title,
+                    style: TextStyle(
+                      fontWeight:
+                          notification.read
+                              ? FontWeight.normal
+                              : FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: Text(notification.message),
+                  trailing: Text(
+                    DateFormat('MMM d, h:mm a').format(notification.timestamp),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  onTap: () async {
+                    if (!notification.read) {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(userId)
+                          .collection('notifications')
+                          .doc(notification.id)
+                          .update({'read': true});
+                    }
+                  },
                 ),
               );
             },

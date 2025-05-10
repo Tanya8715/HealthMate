@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:async';
 
 class SleepTrackerScreen extends StatefulWidget {
   const SleepTrackerScreen({super.key});
@@ -15,10 +15,11 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
   TimeOfDay? sleepTime;
   TimeOfDay? wakeTime;
   double sleepHours = 0;
-  Timer? reminderTimer;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Timer? reminderTimer;
 
   String formatTimeOfDay(TimeOfDay? time) {
     if (time == null) return '--:--';
@@ -60,104 +61,89 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       await _firestore.collection('users').doc(user.uid).update({
         'sleepHours': sleepHours,
       });
+    }
 
-      if (sleepHours < 4 || sleepHours > 12) {
-        await _saveAbnormalSleepNotification();
-        _showSleepResultDialog(isAbnormal: true);
-      } else {
-        _showSleepResultDialog(isAbnormal: false);
-      }
+    if (sleepHours < 8) {
+      showDialog(
+        context: context,
+        builder:
+            (_) => AlertDialog(
+              title: const Text('Not Enough Sleep'),
+              content: const Text(
+                'It’s recommended to sleep at least 8 hours.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Okay'),
+                ),
+              ],
+            ),
+      );
+    }
+
+    // Cancel any existing reminder
+    reminderTimer?.cancel();
+
+    // Schedule 1-minute-before reminder
+    final reminderTime = sleepDateTime.subtract(const Duration(minutes: 1));
+    final delay = reminderTime.difference(DateTime.now());
+
+    if (!delay.isNegative) {
+      reminderTimer = Timer(delay, () {
+        if (!mounted) return;
+        showSleepReminder();
+      });
     }
   }
 
-  Future<void> _saveAbnormalSleepNotification() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('notifications')
-          .add({
-            'message':
-                '😴 Abnormal sleep detected: ${sleepHours.toStringAsFixed(1)} hrs',
-            'timestamp': FieldValue.serverTimestamp(),
-          });
-    }
-  }
-
-  void _showSleepResultDialog({required bool isAbnormal}) {
+  void showSleepReminder() {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text(isAbnormal ? '⚠️ Sleep Warning' : '✅ Sleep Success'),
-            content: Text(
-              isAbnormal
-                  ? 'You had ${sleepHours.toStringAsFixed(1)} hrs of sleep, which is outside the healthy range.'
-                  : 'Great! You slept ${sleepHours.toStringAsFixed(1)} hrs. Keep it up!',
-            ),
+          (_) => AlertDialog(
+            title: const Text('Time to Sleep'),
+            content: const Text('Do you want to go to sleep now?'),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.pop(context);
+                  pickTime(isSleepTime: true);
+                },
+                child: const Text('Change Time'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  startSleepTimer();
+                },
+                child: const Text('Sleep Now'),
               ),
             ],
           ),
     );
   }
 
-  Future<void> startSleepReminderTimer() async {
-    reminderTimer?.cancel();
+  void startSleepTimer() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      final userId = user.uid;
 
-    if (sleepTime == null) return;
-
-    final now = DateTime.now();
-    DateTime sleepDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      sleepTime!.hour,
-      sleepTime!.minute,
-    );
-
-    if (sleepDateTime.isBefore(now)) {
-      sleepDateTime = sleepDateTime.add(const Duration(days: 1));
+      // Add notification to Firestore
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('notifications')
+          .add({
+            'title': 'Sleep Tracking Started',
+            'message': 'You started sleep tracking. Have a good night!',
+            'timestamp': FieldValue.serverTimestamp(),
+            'read': false,
+          });
     }
 
-    final reminderTime = sleepDateTime.subtract(const Duration(minutes: 1));
-    final diff = reminderTime.difference(now);
-
-    if (diff.isNegative) {
-      debugPrint(
-        "Sleep reminder too close to current time. Skipping reminder.",
-      );
-      return;
-    }
-
-    debugPrint("Sleep reminder will trigger in: $diff");
-
-    reminderTimer = Timer(diff, () async {
-      if (mounted) await showSleepReminderPopup();
-    });
-  }
-
-  Future<void> showSleepReminderPopup() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: false, // ❗️Force user to press OK
-      builder:
-          (context) => AlertDialog(
-            title: const Text('⏰ Sleep Reminder'),
-            content: const Text(
-              "It's almost time to sleep. Get ready to relax!",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sleep tracking started. Good night!')),
     );
   }
 
@@ -185,12 +171,10 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       setState(() {
         if (isSleepTime) {
           sleepTime = picked;
-          startSleepReminderTimer(); // ⏰ Start the reminder timer here
         } else {
           wakeTime = picked;
         }
       });
-
       await calculateAndSaveSleep();
     }
   }
