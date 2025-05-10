@@ -88,11 +88,6 @@ BSc (Hons) Computing (2024/25)
 Supervisor: Saroj Shakya  
 Module Leader: Patrick Ingham
 
-## 📚 References
-
-- Brown, J. (2021). *Wearable Technology and Activity Monitoring*.  
-- Chen et al. (2022). *Privacy in Wearable Health Applications*.  
-- Taylor & Carter (2020). *HIPAA & GDPR in Digital Health*.
 
 ## 📜 License
 
