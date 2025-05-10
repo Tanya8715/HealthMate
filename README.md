@@ -13,15 +13,14 @@
 - 🔔 **Daily Sleep and Hydration Reminders**
 - 🌐 **Multilingual Support**
 - 🔒 **Secure Authentication & Data Protection**
-- 📱 **Cross-Platform** (Android, WebView, iOS planned)
-- 🔄 **Integration with Google Fit and Fitbit**
+- 📱 **Cross-Platform** (Android) 
+- 🔄 **Integration with Google Fit**
 
 ## 📦 Technologies Used
 
 - **Flutter** (Dart)
 - **Firebase** (Auth, Firestore, Cloud Functions)
 - **Google Fit API**
-- **Fitbit API**
 - **EmailJS**
 - **Postman** (for API testing)
 - **Balsamiq** (for wireframes)
