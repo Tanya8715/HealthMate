@@ -462,7 +462,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               decoration: BoxDecoration(color: primaryColor),
               child: const Center(
                 child: Text(
-                  'Admin Menu',
+                  'Welcome Admin',
                   style: TextStyle(fontSize: 22, color: Colors.white),
                 ),
               ),

@@ -82,10 +82,8 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       );
     }
 
-    // Cancel any existing reminder
     reminderTimer?.cancel();
 
-    // Schedule 1-minute-before reminder
     final reminderTime = sleepDateTime.subtract(const Duration(minutes: 1));
     final delay = reminderTime.difference(DateTime.now());
 
@@ -129,7 +127,6 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     if (user != null) {
       final userId = user.uid;
 
-      // Add notification to Firestore
       await _firestore
           .collection('users')
           .doc(userId)
@@ -179,6 +176,27 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     }
   }
 
+  void resetSleepTracker() async {
+    reminderTimer?.cancel();
+
+    setState(() {
+      sleepTime = null;
+      wakeTime = null;
+      sleepHours = 0;
+    });
+
+    final user = _auth.currentUser;
+    if (user != null) {
+      await _firestore.collection('users').doc(user.uid).update({
+        'sleepHours': 0,
+      });
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Sleep tracker reset.')));
+  }
+
   @override
   void dispose() {
     reminderTimer?.cancel();
@@ -196,6 +214,12 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
         ),
         backgroundColor: Colors.green[600],
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: resetSleepTracker,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
@@ -254,30 +278,23 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
                 child: Column(
                   children: [
                     const Text(
-                      'Total Sleep',
-                      style: TextStyle(fontSize: 18, color: Colors.black54),
+                      'Total Sleep Duration',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Text(
-                      '${sleepHours.toStringAsFixed(1)} hrs',
+                      '${sleepHours.toStringAsFixed(2)} hours',
                       style: const TextStyle(
-                        fontSize: 32,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 25),
-            const Center(
-              child: Text(
-                'Getting enough sleep is vital for your mental & physical health!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontStyle: FontStyle.italic,
                 ),
               ),
             ),
